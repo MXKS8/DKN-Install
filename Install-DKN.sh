@@ -1,101 +1,115 @@
 #!/bin/bash
 
-# Function to log messages
-log() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
+# Colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+# Function to show progress
+show_status() {
+    echo -e "${YELLOW}⏳ $1...${NC}"
 }
 
-# Function to check command status
-check_status() {
-    if [ $? -ne 0 ]; then
-        log "Error: $1"
-        exit 1
-    fi
+# Function to show success
+show_success() {
+    echo -e "${GREEN}✅ $1${NC}"
 }
 
-# Check if running with sudo privileges
-if [ "$EUID" -ne 0 ]; then
-    log "Please run with sudo privileges"
+# Function to show error
+show_error() {
+    echo -e "${RED}❌ $1${NC}"
     exit 1
+}
+
+# Function to check command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Check if running as root
+if [ "$EUID" -ne 0 ]; then 
+    show_error "Please run as root (use sudo)"
 fi
 
 # Navigate to home directory
 cd ~
-log "Installing required packages..."
-
-# Install needed packages
-apt-get update
-check_status "Failed to update package list"
 
 # Install required packages
-apt-get install -y unzip wget curl git tmux
-check_status "Failed to install required packages"
+show_status "Installing required packages"
+apt-get update || show_error "Failed to update package list"
+apt-get install -y unzip wget curl git tmux || show_error "Failed to install required packages"
+show_success "Required packages installed"
+
+# Install Ollama
+show_status "Installing Ollama"
+if ! command_exists ollama; then
+    curl -fsSL https://ollama.com/install.sh | sh || show_error "Failed to install Ollama"
+    show_success "Ollama installed"
+else
+    show_success "Ollama already installed"
+fi
 
 # Download DKN Compute Node
-log "Setting up DKN Compute Node..."
+show_status "Setting up DKN Compute Node"
 if [ ! -d "dkn-compute-node" ]; then
-    git clone https://github.com/firstbatchxyz/dkn-compute-node.git
-    check_status "Failed to clone DKN Compute Node repository"
+    git clone https://github.com/firstbatchxyz/dkn-compute-node.git || show_error "Failed to clone DKN Compute Node"
 else
     cd dkn-compute-node
     git pull
-    check_status "Failed to update DKN Compute Node repository"
     cd ~
 fi
-
-# Install Ollama
-log "Installing Ollama..."
-curl -fsSL https://ollama.com/install.sh | sh
-check_status "Failed to install Ollama"
+show_success "DKN Compute Node setup complete"
 
 # Download DKN Compute Launcher
-log "Downloading DKN Compute Launcher..."
-wget -q https://github.com/firstbatchxyz/dkn-compute-launcher/releases/latest/download/dkn-compute-launcher-linux-amd64.zip
-check_status "Failed to download DKN Compute Launcher"
+show_status "Downloading DKN Compute Launcher"
+wget https://github.com/firstbatchxyz/dkn-compute-launcher/releases/latest/download/dkn-compute-launcher-linux-amd64.zip || show_error "Failed to download launcher"
+show_success "Launcher downloaded"
 
 # Unzip DKN Compute Launcher
-unzip -o dkn-compute-launcher-linux-amd64.zip
-check_status "Failed to unzip DKN Compute Launcher"
+show_status "Extracting launcher"
+unzip -o dkn-compute-launcher-linux-amd64.zip || show_error "Failed to extract launcher"
+show_success "Launcher extracted"
 
-# Ask user for OPENAI_API_KEY with validation
-while true; do
-    read -p "Enter your OPENAI_API_KEY: " OPENAI_API_KEY
-    if [[ $OPENAI_API_KEY =~ ^sk-[a-zA-Z0-9]{48}$ ]]; then
-        break
-    else
-        log "Invalid API key format. It should start with 'sk-' and be 51 characters long."
-    fi
-done
+# Ask user for OPENAI_API_KEY
+read -p "Enter your OPENAI_API_KEY: " OPENAI_API_KEY
 
-# Update existing .env file
+# Update .env file
+show_status "Updating environment configuration"
 if [ -f ~/dkn-compute-node/.env ]; then
     sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=$OPENAI_API_KEY|" ~/dkn-compute-node/.env
-    check_status "Failed to update .env file"
 else
     echo "OPENAI_API_KEY=$OPENAI_API_KEY" > ~/dkn-compute-node/.env
-    check_status "Failed to create .env file"
 fi
+show_success "Environment configuration updated"
 
 # Pull Ollama model
-log "Pulling Ollama model..."
-ollama pull hellord/mxbai-embed-large-v1:f16
-check_status "Failed to pull Ollama model"
+show_status "Pulling Ollama model"
+ollama pull hellord/mxbai-embed-large-v1:f16 || show_error "Failed to pull Ollama model"
+show_success "Ollama model pulled"
 
-# Kill existing DRIA session if it exists
+# Check if TMUX session exists
 if tmux has-session -t DRIA 2>/dev/null; then
-    log "Killing existing DRIA session..."
+    show_status "Killing existing DRIA session"
     tmux kill-session -t DRIA
 fi
 
-# Start a new tmux session
-log "Starting DRIA session..."
-tmux new-session -d -s DRIA
-check_status "Failed to create tmux session"
+# Make launcher executable
+chmod +x ~/dkn-compute-node/dkn-compute-launcher
 
-# Send commands to the tmux session
+# Start TMUX session
+show_status "Starting DRIA session"
+tmux new-session -d -s DRIA
 tmux send-keys -t DRIA "cd ~/dkn-compute-node && ./dkn-compute-launcher" C-m
-sleep 1
+sleep 2
 tmux send-keys -t DRIA "" C-m
 sleep 1
 tmux send-keys -t DRIA "" C-m
-log "Installation complete! To attach to the DRIA session, use: tmux attach -t DRIA"
+
+show_success "Installation completed successfully!"
+echo ""
+echo "📝 Important notes:"
+echo "  - TMUX session 'DRIA' has been created"
+echo "  - To attach to the session: tmux attach -t DRIA"
+echo "  - To detach from session: Press Ctrl+B, then D"
+echo "  - To view session: tmux ls"
