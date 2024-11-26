@@ -90,20 +90,21 @@ fi
 # Make launcher executable
 chmod +x ~/dkn-compute-node/dkn-compute-launcher || show_error "Failed to make launcher executable"
 
-# Start TMUX session and automatically attach
-show_status "Starting and attaching to DRIA session"
-cd ~/dkn-compute-node
-tmux new-session -s DRIA './dkn-compute-launcher' || show_error "Failed to create and attach to TMUX session"
-
-# Note: The script will stop here as we're now in the attached tmux session
-# The following echo statements will only be seen if the tmux session is detached or closed
+# Start TMUX session
+show_status "Starting DRIA session"
+tmux new-session -d -s DRIA || show_error "Failed to create TMUX session"
+tmux send-keys -t DRIA "cd ~/dkn-compute-node" C-m
+tmux send-keys -t DRIA "./dkn-compute-launcher" C-m
 
 show_success "Installation completed successfully!"
 echo ""
 echo -e "${BLUE}📝 Important notes:${NC}"
-echo "  - You are now in the TMUX session 'DRIA'"
-echo "  - To detach from session: Press Ctrl+B, then D"
-echo "  - To reattach later: tmux attach -t DRIA"
-echo "  - To view sessions: tmux ls"
+echo "  - TMUX session 'DRIA' has been created and launcher is running"
+echo "  - The session will be attached in 5 seconds..."
 echo ""
-show_info "DKN node is now running in the current session"
+
+# Wait a moment for everything to initialize
+sleep 5
+
+# Attach to the session
+exec tmux attach -t DRIA
