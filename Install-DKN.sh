@@ -32,17 +32,6 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# Function to validate OpenAI API key
-validate_api_key() {
-    local api_key=$1
-    # Accepteer elke key die met sk- begint
-    if [[ ! $api_key =~ ^sk- ]]; then
-        show_error "Invalid API key format. Key should start with 'sk-'"
-        return 1
-    fi
-    return 0
-}
-
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then 
     show_error "Please run as root (use sudo)"
@@ -86,25 +75,6 @@ show_success "Launcher downloaded"
 show_status "Extracting launcher"
 unzip -o dkn-compute-launcher-linux-amd64.zip || show_error "Failed to extract launcher"
 show_success "Launcher extracted"
-
-# Ask user for OPENAI_API_KEY with validation
-while true; do
-    show_info "Enter your OpenAI API key (starts with 'sk-')"
-    read -p "API Key: " OPENAI_API_KEY
-    if validate_api_key "$OPENAI_API_KEY"; then
-        break
-    fi
-    show_info "Please try again or press Ctrl+C to exit"
-done
-
-# Update .env file
-show_status "Updating environment configuration"
-if [ -f ~/dkn-compute-node/.env ]; then
-    sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=$OPENAI_API_KEY|" ~/dkn-compute-node/.env || show_error "Failed to update .env file"
-else
-    echo "OPENAI_API_KEY=$OPENAI_API_KEY" > ~/dkn-compute-node/.env || show_error "Failed to create .env file"
-fi
-show_success "Environment configuration updated"
 
 # Pull Ollama model
 show_status "Pulling Ollama model"
