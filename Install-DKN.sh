@@ -1,9 +1,9 @@
 #!/bin/bash
-
 # Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
+BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Function to show progress
@@ -22,9 +22,24 @@ show_error() {
     exit 1
 }
 
+# Function to show info
+show_info() {
+    echo -e "${BLUE}ℹ️ $1${NC}"
+}
+
 # Function to check command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
+}
+
+# Function to validate OpenAI API key
+validate_api_key() {
+    local api_key=$1
+    if [[ ! $api_key =~ ^sk-[a-zA-Z0-9]{48}$ ]]; then
+        show_error "Invalid API key format. Key should start with 'sk-' and be 51 characters long"
+        return 1
+    fi
+    return 0
 }
 
 # Check if running as root
@@ -56,14 +71,14 @@ if [ ! -d "dkn-compute-node" ]; then
     git clone https://github.com/firstbatchxyz/dkn-compute-node.git || show_error "Failed to clone DKN Compute Node"
 else
     cd dkn-compute-node
-    git pull
+    git pull || show_error "Failed to update DKN Compute Node"
     cd ~
 fi
 show_success "DKN Compute Node setup complete"
 
 # Download DKN Compute Launcher
 show_status "Downloading DKN Compute Launcher"
-wget https://github.com/firstbatchxyz/dkn-compute-launcher/releases/latest/download/dkn-compute-launcher-linux-amd64.zip || show_error "Failed to download launcher"
+wget -q https://github.com/firstbatchxyz/dkn-compute-launcher/releases/latest/download/dkn-compute-launcher-linux-amd64.zip || show_error "Failed to download launcher"
 show_success "Launcher downloaded"
 
 # Unzip DKN Compute Launcher
@@ -71,15 +86,22 @@ show_status "Extracting launcher"
 unzip -o dkn-compute-launcher-linux-amd64.zip || show_error "Failed to extract launcher"
 show_success "Launcher extracted"
 
-# Ask user for OPENAI_API_KEY
-read -p "Enter your OPENAI_API_KEY: " OPENAI_API_KEY
+# Ask user for OPENAI_API_KEY with validation
+while true; do
+    show_info "Enter your OpenAI API key (starts with 'sk-')"
+    read -p "API Key: " OPENAI_API_KEY
+    if validate_api_key "$OPENAI_API_KEY"; then
+        break
+    fi
+    show_info "Please try again or press Ctrl+C to exit"
+done
 
 # Update .env file
 show_status "Updating environment configuration"
 if [ -f ~/dkn-compute-node/.env ]; then
-    sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=$OPENAI_API_KEY|" ~/dkn-compute-node/.env
+    sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=$OPENAI_API_KEY|" ~/dkn-compute-node/.env || show_error "Failed to update .env file"
 else
-    echo "OPENAI_API_KEY=$OPENAI_API_KEY" > ~/dkn-compute-node/.env
+    echo "OPENAI_API_KEY=$OPENAI_API_KEY" > ~/dkn-compute-node/.env || show_error "Failed to create .env file"
 fi
 show_success "Environment configuration updated"
 
@@ -95,11 +117,11 @@ if tmux has-session -t DRIA 2>/dev/null; then
 fi
 
 # Make launcher executable
-chmod +x ~/dkn-compute-node/dkn-compute-launcher
+chmod +x ~/dkn-compute-node/dkn-compute-launcher || show_error "Failed to make launcher executable"
 
 # Start TMUX session
 show_status "Starting DRIA session"
-tmux new-session -d -s DRIA
+tmux new-session -d -s DRIA || show_error "Failed to create TMUX session"
 tmux send-keys -t DRIA "cd ~/dkn-compute-node && ./dkn-compute-launcher" C-m
 sleep 2
 tmux send-keys -t DRIA "" C-m
@@ -108,8 +130,10 @@ tmux send-keys -t DRIA "" C-m
 
 show_success "Installation completed successfully!"
 echo ""
-echo "📝 Important notes:"
+echo -e "${BLUE}📝 Important notes:${NC}"
 echo "  - TMUX session 'DRIA' has been created"
 echo "  - To attach to the session: tmux attach -t DRIA"
 echo "  - To detach from session: Press Ctrl+B, then D"
 echo "  - To view session: tmux ls"
+echo ""
+show_info "You can now access your DKN node by attaching to the TMUX session"
